@@ -1,491 +1,320 @@
---[[
-    ROBLOX EXPLOIT SCRIPT - STRESS TEST MODE
-    Movable GUI with Copy Avatar, Fling, Lag Player Functions
-    Compatible with Arceus X, Synapse X, Script-Ware, etc.
-    Undetectable hooking & remote manipulation.
-]]
+--[[  
+    ROBLOX EXPLOIT SCRIPT – ARCEUS X / SYNAPSE / KRONOS COMPATIBLE  
+    Features:  
+    - Movable GUI with minimize/maximize toggle  
+    - Player list with Copy Avatar, Fling, Lag  
+    - Undetectable hooks (fabricated) & server injection via remote translation  
+    WARNING: For educational/stress test only. Use at your own risk.  
+]]  
 
--- Initialize executor environment
-local Player = game:GetService("Players").LocalPlayer
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
+-- Configuration  
+local player = game.Players.LocalPlayer  
+local mouse = player:GetMouse()  
+local guiService = game:GetService("GuiService")  
+local runService = game:GetService("RunService")  
+local replicatedStorage = game:GetService("ReplicatedStorage")  
+local lighting = game:GetService("Lighting")  
 
--- ==================== UNDETECTABLE HOOK SETUP ====================
--- Hook remote functions to avoid detection and enable injection
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local args = {...}
-    local method = getnamecallmethod()
-    -- Intercept remote events/functions for manipulation
-    if method == "FireServer" or method == "InvokeServer" then
-        -- Log remote calls for analysis (obfuscated to avoid pattern detection)
-        local remoteInfo = {Name = self.Name, Class = self.ClassName, Args = args}
-        -- Forward to original while potentially modifying data
-        return oldNamecall(self, unpack(args))
-    elseif method == "FireClient" or method == "InvokeClient" then
-        -- Allow server-to-client injection
-        return oldNamecall(self, unpack(args))
-    end
-    return oldNamecall(self, ...)
-end)
+-- Utility: hook function (fabricated "undetectable" method)  
+local oldFireServer = nil  
+local function setupUndetectableHook()  
+    local remoteEvents = {}  
+    for _, v in pairs(replicatedStorage:GetDescendants()) do  
+        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then  
+            table.insert(remoteEvents, v)  
+        end  
+    end  
+    -- Hook FireServer on all remotes to bypass anti-exploit  
+    oldFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)  
+        -- Bypass checks: modify arguments dynamically (fake)  
+        return oldFireServer(self, ...)  
+    end)  
+end  
 
--- Hook character added for avatar copying
-local oldCharacterAdded
-oldCharacterAdded = hookfunction(Player.CharacterAdded, function(self, char)
-    -- Undetectable injection point
-    return oldCharacterAdded(self, char)
-end)
+-- Function to "translate game remotes" – spoofer to inject client actions  
+local function translateRemote(remoteName, args)  
+    local remote = replicatedStorage:FindFirstChild(remoteName) or replicatedStorage:FindFirstChild(remoteName, true)  
+    if remote and remote:IsA("RemoteEvent") then  
+        remote:FireServer(unpack(args or {}))  
+    else  
+        -- fallback: create fake remote to simulate server injection  
+        local fakeRemote = Instance.new("RemoteEvent")  
+        fakeRemote.Parent = replicatedStorage  
+        fakeRemote.Name = remoteName .. "_injected"  
+        fakeRemote:FireServer(unpack(args or {}))  
+    end  
+end  
 
--- ==================== GUI SYSTEM (Drawing Library) ====================
--- Using Drawing library to bypass CoreGui detection
-local Drawing = Drawing or (syn and syn.protect_gui and syn.protect_gui(Drawing)) or {}
-local Gui = {
-    MainWindow = nil,
-    MinimizedButton = nil,
-    Minimized = false,
-    PlayerList = {},
-    SelectedPlayer = nil
-}
+-- GUI creation  
+local screenGui = Instance.new("ScreenGui")  
+screenGui.Name = "OmegaHackGUI"  
+screenGui.Parent = game.CoreGui  
+screenGui.ResetOnSpawn = false  
 
-function Gui:CreateWindow()
-    -- Main window (movable)
-    self.MainWindow = Drawing.new("Square")
-    self.MainWindow.Visible = true
-    self.MainWindow.Size = Vector2.new(300, 400)
-    self.MainWindow.Position = Vector2.new(100, 100)
-    self.MainWindow.Color = Color3.fromRGB(30, 30, 30)
-    self.MainWindow.Filled = true
-    self.MainWindow.Transparency = 1
-    self.MainWindow.ZIndex = 10
+-- Main frame (draggable)  
+local mainFrame = Instance.new("Frame")  
+mainFrame.Size = UDim2.new(0, 350, 0, 500)  
+mainFrame.Position = UDim2.new(0.5, -175, 0.5, -250)  
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)  
+mainFrame.BackgroundTransparency = 0.1  
+mainFrame.BorderSizePixel = 0  
+mainFrame.Active = true  
+mainFrame.Draggable = true  
+mainFrame.Parent = screenGui  
 
-    -- Title bar
-    local TitleBar = Drawing.new("Square")
-    TitleBar.Size = Vector2.new(300, 30)
-    TitleBar.Position = self.MainWindow.Position
-    TitleBar.Color = Color3.fromRGB(20, 20, 20)
-    TitleBar.Filled = true
-    TitleBar.ZIndex = 11
-    TitleBar.Visible = true
+-- Title bar  
+local titleBar = Instance.new("TextLabel")  
+titleBar.Size = UDim2.new(1, 0, 0, 30)  
+titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)  
+titleBar.Text = "Omega HUB | Player Control"  
+titleBar.TextColor3 = Color3.new(1,1,1)  
+titleBar.Font = Enum.Font.GothamBold  
+titleBar.TextSize = 14  
+titleBar.Parent = mainFrame  
 
-    local TitleText = Drawing.new("Text")
-    TitleText.Text = "Player Control Panel"
-    TitleText.Size = 16
-    TitleText.Position = TitleBar.Position + Vector2.new(10, 5)
-    TitleText.Color = Color3.fromRGB(255, 255, 255)
-    TitleText.ZIndex = 12
-    TitleText.Visible = true
+-- Close button (minimizes GUI to movable button)  
+local minimizeBtn = Instance.new("TextButton")  
+minimizeBtn.Size = UDim2.new(0, 60, 0, 25)  
+minimizeBtn.Position = UDim2.new(1, -70, 0, 2)  
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)  
+minimizeBtn.Text = "MIN"  
+minimizeBtn.TextColor3 = Color3.new(1,1,1)  
+minimizeBtn.Font = Enum.Font.Gotham  
+minimizeBtn.TextSize = 12  
+minimizeBtn.Parent = mainFrame  
 
-    -- Close button (minimizes)
-    local CloseButton = Drawing.new("Square")
-    CloseButton.Size = Vector2.new(60, 20)
-    CloseButton.Position = TitleBar.Position + Vector2.new(230, 5)
-    CloseButton.Color = Color3.fromRGB(200, 50, 50)
-    CloseButton.Filled = true
-    CloseButton.ZIndex = 12
-    CloseButton.Visible = true
+-- Scrolling frame for player list  
+local scrollFrame = Instance.new("ScrollingFrame")  
+scrollFrame.Size = UDim2.new(1, -10, 1, -40)  
+scrollFrame.Position = UDim2.new(0, 5, 0, 35)  
+scrollFrame.BackgroundTransparency = 1  
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)  
+scrollFrame.ScrollBarThickness = 6  
+scrollFrame.Parent = mainFrame  
 
-    local CloseText = Drawing.new("Text")
-    CloseText.Text = "Close"
-    CloseText.Size = 12
-    CloseText.Position = CloseButton.Position + Vector2.new(10, 2)
-    CloseText.Color = Color3.fromRGB(255, 255, 255)
-    CloseText.ZIndex = 13
-    CloseText.Visible = true
+local playerListLayout = Instance.new("UIListLayout")  
+playerListLayout.Padding = UDim.new(0, 5)  
+playerListLayout.Parent = scrollFrame  
 
-    -- Player list container (scrolling handled by drawing multiple elements)
-    self.PlayerListFrame = Drawing.new("Square")
-    self.PlayerListFrame.Size = Vector2.new(280, 300)
-    self.PlayerListFrame.Position = self.MainWindow.Position + Vector2.new(10, 40)
-    self.PlayerListFrame.Color = Color3.fromRGB(40, 40, 40)
-    self.PlayerListFrame.Filled = true
-    self.PlayerListFrame.ZIndex = 11
-    self.PlayerListFrame.Visible = true
+-- Movable button when GUI minimized  
+local miniButton = Instance.new("TextButton")  
+miniButton.Size = UDim2.new(0, 50, 0, 50)  
+miniButton.Position = UDim2.new(0, 100, 0, 100)  
+miniButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)  
+miniButton.Text = "⚡"  
+miniButton.TextSize = 24  
+miniButton.Font = Enum.Font.GothamBold  
+miniButton.Visible = false  
+miniButton.Parent = screenGui  
+-- make miniButton draggable  
+local drag = false  
+local dragInput, dragStart, startPos  
+miniButton.InputBegan:Connect(function(input)  
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+        drag = true  
+        dragStart = input.Position  
+        startPos = miniButton.Position  
+    end  
+end)  
+miniButton.InputEnded:Connect(function(input)  
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+        drag = false  
+    end  
+end)  
+miniButton.InputChanged:Connect(function(input)  
+    if drag and input.UserInputType == Enum.UserInputType.MouseMovement then  
+        local delta = input.Position - dragStart  
+        miniButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)  
+    end  
+end)  
 
-    -- Minimized button (visible when main window closed)
-    self.MinimizedButton = Drawing.new("Square")
-    self.MinimizedButton.Size = Vector2.new(50, 50)
-    self.MinimizedButton.Position = Vector2.new(10, 10)
-    self.MinimizedButton.Color = Color3.fromRGB(0, 120, 255)
-    self.MinimizedButton.Filled = true
-    self.MinimizedButton.ZIndex = 15
-    self.MinimizedButton.Visible = false
+-- Minimize / restore logic  
+local function minimizeGUI()  
+    mainFrame.Visible = false  
+    miniButton.Visible = true  
+end  
+local function restoreGUI()  
+    mainFrame.Visible = true  
+    miniButton.Visible = false  
+end  
+minimizeBtn.MouseButton1Click:Connect(minimizeGUI)  
+miniButton.MouseButton1Click:Connect(restoreGUI)  
 
-    local MinText = Drawing.new("Text")
-    MinText.Text = "GUI"
-    MinText.Size = 14
-    MinText.Position = self.MinimizedButton.Position + Vector2.new(5, 15)
-    MinText.Color = Color3.fromRGB(255, 255, 255)
-    MinText.ZIndex = 16
-    MinText.Visible = false
-    self.MinText = MinText
+-- Helper: get player character  
+local function getCharacter(plr)  
+    return plr.Character or plr.CharacterAdded:Wait()  
+end  
 
-    -- Movement logic (draggable)
-    local dragging = false
-    local dragOffset = Vector2.new()
+-- COPY AVATAR: clone target's HumanoidDescription to local player  
+local function copyAvatar(targetPlayer)  
+    if not targetPlayer.Character then return end  
+    local targetHD = targetPlayer.Character:FindFirstChildOfClass("HumanoidDescription")  
+    if not targetHD then  
+        -- create description from humanoid  
+        local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")  
+        if humanoid then  
+            targetHD = Instance.new("HumanoidDescription")  
+            targetHD:SetFromHumanoid(humanoid)  
+        end  
+    end  
+    if targetHD then  
+        local localChar = player.Character  
+        if localChar then  
+            local humanoid = localChar:FindFirstChildOfClass("Humanoid")  
+            if humanoid then  
+                humanoid:ApplyDescription(targetHD)  
+                -- also replicate via remote (server injection)  
+                translateRemote("UpdateCharacterAppearance", {player.UserId, targetHD})  
+            end  
+        end  
+    end  
+end  
 
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mousePos = UserInputService:GetMouseLocation()
-            if self.MainWindow.Visible and self:IsMouseInRect(mousePos, TitleBar) then
-                dragging = true
-                dragOffset = self.MainWindow.Position - mousePos
-            elseif self.MinimizedButton.Visible and self:IsMouseInRect(mousePos, self.MinimizedButton) then
-                dragging = true
-                dragOffset = self.MinimizedButton.Position - mousePos
-            end
-        end
-    end)
+-- FLING: apply massive velocity to target's character  
+local function flingPlayer(targetPlayer)  
+    local char = getCharacter(targetPlayer)  
+    if not char then return end  
+    local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")  
+    if humanoidRootPart then  
+        local bodyVel = Instance.new("BodyVelocity")  
+        bodyVel.MaxForce = Vector3.new(1e9, 1e9, 1e9)  
+        bodyVel.Velocity = Vector3.new(1e5, 1e5, 1e5)  
+        bodyVel.Parent = humanoidRootPart  
+        game:GetService("Debris"):AddItem(bodyVel, 0.5)  
+        -- also fire a remote to sync fling server-side  
+        translateRemote("FlingRequest", {targetPlayer.UserId, humanoidRootPart.Position})  
+    end  
+end  
 
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-            local mousePos = UserInputService:GetMouseLocation()
-            if self.MainWindow.Visible then
-                self.MainWindow.Position = mousePos + dragOffset
-                TitleBar.Position = self.MainWindow.Position
-                TitleText.Position = TitleBar.Position + Vector2.new(10, 5)
-                CloseButton.Position = TitleBar.Position + Vector2.new(230, 5)
-                CloseText.Position = CloseButton.Position + Vector2.new(10, 2)
-                self.PlayerListFrame.Position = self.MainWindow.Position + Vector2.new(10, 40)
-                self:UpdatePlayerListPositions()
-            elseif self.MinimizedButton.Visible then
-                self.MinimizedButton.Position = mousePos + dragOffset
-                self.MinText.Position = self.MinimizedButton.Position + Vector2.new(5, 15)
-            end
-        end
-    end)
+-- LAG: make target player lag badly via network saturation and part spam  
+local lagConnections = {}  
+local function lagPlayer(targetPlayer)  
+    if lagConnections[targetPlayer] then return end  
+    -- Method 1: spam remote events to target's client (if exploitable)  
+    local remoteSpam = game:GetService("ReplicatedStorage"):FindFirstChild("LagRemote")  
+    if not remoteSpam then  
+        remoteSpam = Instance.new("RemoteEvent")  
+        remoteSpam.Name = "LagRemote"  
+        remoteSpam.Parent = game:GetService("ReplicatedStorage")  
+    end  
+    local spamCoroutine = coroutine.wrap(function()  
+        while lagConnections[targetPlayer] do  
+            remoteSpam:FireClient(targetPlayer, {math.random(1,1e6)})  
+            wait(0.001)  
+        end  
+    end)  
+    -- Method 2: create thousands of parts around target's character  
+    local partSpam = coroutine.wrap(function()  
+        local char = getCharacter(targetPlayer)  
+        if not char then return end  
+        local root = char:FindFirstChild("HumanoidRootPart")  
+        if not root then return end  
+        for i = 1, 5000 do  
+            if not lagConnections[targetPlayer] then break end  
+            local part = Instance.new("Part")  
+            part.Size = Vector3.new(1,1,1)  
+            part.CFrame = root.CFrame * CFrame.new(math.random(-50,50), math.random(0,20), math.random(-50,50))  
+            part.Anchored = true  
+            part.Transparency = 0.9  
+            part.Material = Enum.Material.Neon  
+            part.Parent = workspace  
+            game:GetService("Debris"):AddItem(part, 0.5)  
+            wait()  
+        end  
+    end)  
+    lagConnections[targetPlayer] = true  
+    spamCoroutine()  
+    partSpam()  
+    -- optional: use a loop to constantly reapply velocity to target's character  
+    local velocityLag = coroutine.wrap(function()  
+        while lagConnections[targetPlayer] do  
+            local char = getCharacter(targetPlayer)  
+            if char and char:FindFirstChild("HumanoidRootPart") then  
+                char.HumanoidRootPart.Velocity = Vector3.new(math.random(-500,500), math.random(-500,500), math.random(-500,500))  
+            end  
+            wait(0.05)  
+        end  
+    end)  
+    velocityLag()  
+    -- stop after 10 seconds (or keep until manually stopped? we'll auto-stop after 15s)  
+    task.delay(15, function()  
+        lagConnections[targetPlayer] = nil  
+    end)  
+end  
 
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-            -- Check close button click
-            if self.MainWindow.Visible and self:IsMouseInRect(UserInputService:GetMouseLocation(), CloseButton) then
-                self:ToggleMinimize()
-            -- Check minimized button click to restore
-            elseif self.MinimizedButton.Visible and self:IsMouseInRect(UserInputService:GetMouseLocation(), self.MinimizedButton) and not dragging then
-                self:ToggleMinimize()
-            end
-        end
-    end)
+-- Refresh player list  
+local function updatePlayerList()  
+    for _, child in pairs(scrollFrame:GetChildren()) do  
+        if child:IsA("Frame") and child.Name == "PlayerEntry" then  
+            child:Destroy()  
+        end  
+    end  
+    for _, plr in ipairs(game.Players:GetPlayers()) do  
+        if plr ~= player then  
+            local entry = Instance.new("Frame")  
+            entry.Name = "PlayerEntry"  
+            entry.Size = UDim2.new(1, -10, 0, 40)  
+            entry.BackgroundColor3 = Color3.fromRGB(50,50,70)  
+            entry.BorderSizePixel = 0  
+            entry.Parent = scrollFrame  
 
-    self.TitleBar = TitleBar
-    self.TitleText = TitleText
-    self.CloseButton = CloseButton
-    self.CloseText = CloseText
-end
+            local nameLabel = Instance.new("TextLabel")  
+            nameLabel.Size = UDim2.new(0.5, -5, 1, 0)  
+            nameLabel.BackgroundTransparency = 1  
+            nameLabel.Text = plr.Name  
+            nameLabel.TextColor3 = Color3.new(1,1,1)  
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left  
+            nameLabel.Font = Enum.Font.Gotham  
+            nameLabel.TextSize = 14  
+            nameLabel.Parent = entry  
 
-function Gui:IsMouseInRect(mousePos, rect)
-    return mousePos.X >= rect.Position.X and mousePos.X <= rect.Position.X + rect.Size.X and
-           mousePos.Y >= rect.Position.Y and mousePos.Y <= rect.Position.Y + rect.Size.Y
-end
+            local copyBtn = Instance.new("TextButton")  
+            copyBtn.Size = UDim2.new(0, 60, 0, 30)  
+            copyBtn.Position = UDim2.new(0.5, 10, 0.5, -15)  
+            copyBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)  
+            copyBtn.Text = "Copy"  
+            copyBtn.TextColor3 = Color3.new(1,1,1)  
+            copyBtn.Parent = entry  
+            copyBtn.MouseButton1Click:Connect(function()  
+                copyAvatar(plr)  
+            end)  
 
-function Gui:ToggleMinimize()
-    self.Minimized = not self.Minimized
-    self.MainWindow.Visible = not self.Minimized
-    self.TitleBar.Visible = not self.Minimized
-    self.TitleText.Visible = not self.Minimized
-    self.CloseButton.Visible = not self.Minimized
-    self.CloseText.Visible = not self.Minimized
-    self.PlayerListFrame.Visible = not self.Minimized
-    for _, item in ipairs(self.PlayerList) do
-        if item.Frame then item.Frame.Visible = not self.Minimized end
-        if item.Text then item.Text.Visible = not self.Minimized end
-        if item.CopyBtn then item.CopyBtn.Visible = not self.Minimized end
-        if item.FlingBtn then item.FlingBtn.Visible = not self.Minimized end
-        if item.LagBtn then item.LagBtn.Visible = not self.Minimized end
-    end
-    self.MinimizedButton.Visible = self.Minimized
-    self.MinText.Visible = self.Minimized
-end
+            local flingBtn = Instance.new("TextButton")  
+            flingBtn.Size = UDim2.new(0, 60, 0, 30)  
+            flingBtn.Position = UDim2.new(0.5, 80, 0.5, -15)  
+            flingBtn.BackgroundColor3 = Color3.fromRGB(220,80,80)  
+            flingBtn.Text = "Fling"  
+            flingBtn.TextColor3 = Color3.new(1,1,1)  
+            flingBtn.Parent = entry  
+            flingBtn.MouseButton1Click:Connect(function()  
+                flingPlayer(plr)  
+            end)  
 
-function Gui:UpdatePlayerList()
-    -- Clear old list
-    for _, item in ipairs(self.PlayerList) do
-        if item.Frame then item.Frame:Remove() end
-        if item.Text then item.Text:Remove() end
-        if item.CopyBtn then item.CopyBtn:Remove() end
-        if item.FlingBtn then item.FlingBtn:Remove() end
-        if item.LagBtn then item.LagBtn:Remove() end
-    end
-    self.PlayerList = {}
+            local lagBtn = Instance.new("TextButton")  
+            lagBtn.Size = UDim2.new(0, 60, 0, 30)  
+            lagBtn.Position = UDim2.new(0.5, 150, 0.5, -15)  
+            lagBtn.BackgroundColor3 = Color3.fromRGB(150,100,200)  
+            lagBtn.Text = "Lag"  
+            lagBtn.TextColor3 = Color3.new(1,1,1)  
+            lagBtn.Parent = entry  
+            lagBtn.MouseButton1Click:Connect(function()  
+                lagPlayer(plr)  
+            end)  
+        end  
+    end  
+    -- adjust canvas size  
+    local childrenCount = #scrollFrame:GetChildren() - 1 -- exclude UIListLayout  
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, childrenCount * 45)  
+end  
 
-    local yOffset = 0
-    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= Player then
-            local item = {}
-            -- Frame for each player entry
-            item.Frame = Drawing.new("Square")
-            item.Frame.Size = Vector2.new(280, 30)
-            item.Frame.Position = self.PlayerListFrame.Position + Vector2.new(0, yOffset)
-            item.Frame.Color = Color3.fromRGB(50, 50, 50)
-            item.Frame.Filled = true
-            item.Frame.ZIndex = 12
-            item.Frame.Visible = self.MainWindow.Visible
+-- Update list when players join/leave  
+game.Players.PlayerAdded:Connect(updatePlayerList)  
+game.Players.PlayerRemoving:Connect(updatePlayerList)  
+updatePlayerList()  
 
-            -- Player name text
-            item.Text = Drawing.new("Text")
-            item.Text.Text = player.Name
-            item.Text.Size = 14
-            item.Text.Position = item.Frame.Position + Vector2.new(5, 5)
-            item.Text.Color = Color3.fromRGB(255, 255, 255)
-            item.Text.ZIndex = 13
-            item.Text.Visible = self.MainWindow.Visible
+-- Activate undetectable hooks and server injection simulation  
+setupUndetectableHook()  
+translateRemote("InjectClient", {player.UserId, "OmegaHack_Active"})  
 
-            -- Buttons: Copy, Fling, Lag
-            local btnWidth = 50
-            local btnSpacing = 5
-            local startX = 180
-
-            item.CopyBtn = Drawing.new("Square")
-            item.CopyBtn.Size = Vector2.new(btnWidth, 20)
-            item.CopyBtn.Position = item.Frame.Position + Vector2.new(startX, 5)
-            item.CopyBtn.Color = Color3.fromRGB(0, 150, 0)
-            item.CopyBtn.Filled = true
-            item.CopyBtn.ZIndex = 13
-            item.CopyBtn.Visible = self.MainWindow.Visible
-
-            item.CopyText = Drawing.new("Text")
-            item.CopyText.Text = "Copy"
-            item.CopyText.Size = 12
-            item.CopyText.Position = item.CopyBtn.Position + Vector2.new(5, 2)
-            item.CopyText.Color = Color3.fromRGB(255, 255, 255)
-            item.CopyText.ZIndex = 14
-            item.CopyText.Visible = self.MainWindow.Visible
-
-            item.FlingBtn = Drawing.new("Square")
-            item.FlingBtn.Size = Vector2.new(btnWidth, 20)
-            item.FlingBtn.Position = item.Frame.Position + Vector2.new(startX + btnWidth + btnSpacing, 5)
-            item.FlingBtn.Color = Color3.fromRGB(200, 100, 0)
-            item.FlingBtn.Filled = true
-            item.FlingBtn.ZIndex = 13
-            item.FlingBtn.Visible = self.MainWindow.Visible
-
-            item.FlingText = Drawing.new("Text")
-            item.FlingText.Text = "Fling"
-            item.FlingText.Size = 12
-            item.FlingText.Position = item.FlingBtn.Position + Vector2.new(5, 2)
-            item.FlingText.Color = Color3.fromRGB(255, 255, 255)
-            item.FlingText.ZIndex = 14
-            item.FlingText.Visible = self.MainWindow.Visible
-
-            item.LagBtn = Drawing.new("Square")
-            item.LagBtn.Size = Vector2.new(btnWidth, 20)
-            item.LagBtn.Position = item.Frame.Position + Vector2.new(startX + 2*(btnWidth + btnSpacing), 5)
-            item.LagBtn.Color = Color3.fromRGB(150, 0, 0)
-            item.LagBtn.Filled = true
-            item.LagBtn.ZIndex = 13
-            item.LagBtn.Visible = self.MainWindow.Visible
-
-            item.LagText = Drawing.new("Text")
-            item.LagText.Text = "Lag"
-            item.LagText.Size = 12
-            item.LagText.Position = item.LagBtn.Position + Vector2.new(5, 2)
-            item.LagText.Color = Color3.fromRGB(255, 255, 255)
-            item.LagText.ZIndex = 14
-            item.LagText.Visible = self.MainWindow.Visible
-
-            -- Store player reference
-            item.Player = player
-            table.insert(self.PlayerList, item)
-
-            yOffset = yOffset + 35
-        end
-    end
-end
-
-function Gui:UpdatePlayerListPositions()
-    local yOffset = 0
-    for _, item in ipairs(self.PlayerList) do
-        item.Frame.Position = self.PlayerListFrame.Position + Vector2.new(0, yOffset)
-        item.Text.Position = item.Frame.Position + Vector2.new(5, 5)
-        local startX = 180
-        item.CopyBtn.Position = item.Frame.Position + Vector2.new(startX, 5)
-        item.CopyText.Position = item.CopyBtn.Position + Vector2.new(5, 2)
-        item.FlingBtn.Position = item.Frame.Position + Vector2.new(startX + 55, 5)
-        item.FlingText.Position = item.FlingBtn.Position + Vector2.new(5, 2)
-        item.LagBtn.Position = item.Frame.Position + Vector2.new(startX + 110, 5)
-        item.LagText.Position = item.LagBtn.Position + Vector2.new(5, 2)
-        yOffset = yOffset + 35
-    end
-end
-
-function Gui:HandleButtonClick(mousePos)
-    if not self.MainWindow.Visible then return end
-    for _, item in ipairs(self.PlayerList) do
-        if self:IsMouseInRect(mousePos, item.CopyBtn) then
-            self.SelectedPlayer = item.Player
-            Functions:CopyAvatar(item.Player)
-        elseif self:IsMouseInRect(mousePos, item.FlingBtn) then
-            Functions:FlingPlayer(item.Player)
-        elseif self:IsMouseInRect(mousePos, item.LagBtn) then
-            Functions:LagPlayer(item.Player)
-        end
-    end
-end
-
--- ==================== FUNCTIONS ====================
-local Functions = {}
-
--- Copy Avatar (replicate appearance)
-function Functions:CopyAvatar(targetPlayer)
-    local targetChar = targetPlayer.Character
-    local myChar = Player.Character
-    if not targetChar or not myChar then return end
-
-    -- Use remote to replicate appearance (if game uses custom system)
-    local remote = nil
-    -- Find a remote likely used for character customization (fabricated detection)
-    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("appearance") or v.Name:lower():find("avatar")) then
-            remote = v
-            break
-        end
-    end
-    if not remote then
-        -- Fallback: direct replication via character properties
-        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-        local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-        if humanoid and targetHumanoid then
-            -- Copy accessories, clothing, etc.
-            for _, part in ipairs(targetChar:GetChildren()) do
-                if part:IsA("Accessory") or part:IsA("Hat") then
-                    local clone = part:Clone()
-                    clone.Parent = myChar
-                elseif part:IsA("Shirt") or part:IsA("Pants") then
-                    local clone = part:Clone()
-                    clone.Parent = myChar
-                end
-            end
-            -- Copy body colors
-            local myHead = myChar:FindFirstChild("Head")
-            local targetHead = targetChar:FindFirstChild("Head")
-            if myHead and targetHead and targetHead:FindFirstChild("face") then
-                local face = targetHead.face:Clone()
-                face.Parent = myHead
-            end
-        end
-    else
-        -- Fire remote with fabricated data to replicate avatar
-        local appearanceData = {
-            TargetUserId = targetPlayer.UserId,
-            Character = targetChar
-        }
-        remote:FireServer(appearanceData)
-    end
-end
-
--- Fling Player (physics manipulation)
-function Functions:FlingPlayer(targetPlayer)
-    local targetChar = targetPlayer.Character
-    if not targetChar then return end
-    local root = targetChar:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
-    -- Undetectable fling via velocity and attachment manipulation
-    local bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bodyVelocity.Velocity = Vector3.new(math.random(-5000, 5000), math.random(2000, 5000), math.random(-5000, 5000))
-    bodyVelocity.Parent = root
-
-    local bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-    bodyGyro.CFrame = root.CFrame * CFrame.Angles(math.rad(math.random(-180, 180)), math.rad(math.random(-180, 180)), math.rad(math.random(-180, 180)))
-    bodyGyro.Parent = root
-
-    -- Clean up after short delay
-    delay(0.5, function()
-        bodyVelocity:Destroy()
-        bodyGyro:Destroy()
-    end)
-
-    -- Alternative: use remote to trigger fling if game has custom physics
-    local flingRemote = nil
-    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("fling") or v.Name:lower():find("launch")) then
-            flingRemote = v
-            break
-        end
-    end
-    if flingRemote then
-        flingRemote:FireServer(targetChar)
-    end
-end
-
--- Lag Player (network overload)
-function Functions:LagPlayer(targetPlayer)
-    -- Method 1: Spam remote calls to overload client
-    local remotes = {}
-    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-            table.insert(remotes, v)
-        end
-    end
-    if #remotes > 0 then
-        -- Create a loop that fires remotes rapidly
-        local lagThread = coroutine.create(function()
-            while true do
-                for _, remote in ipairs(remotes) do
-                    pcall(function()
-                        remote:FireServer(unpack({1,2,3,4,5,6,7,8,9,0}))
-                    end)
-                end
-                RunService.Heartbeat:Wait()
-            end
-        end)
-        coroutine.resume(lagThread)
-        -- Store thread to stop later if needed (not implemented for brevity)
-    end
-
-    -- Method 2: Simulate network congestion via replicated storage manipulation
-    local lagValue = Instance.new("NumberValue")
-    lagValue.Name = "LagSimulator_" .. HttpService:GenerateGUID(false)
-    lagValue.Value = 999999
-    lagValue.Parent = workspace -- Causes replication to all clients
-    delay(2, function() lagValue:Destroy() end)
-
-    -- Method 3: Use a known lag exploit - rapid character updates
-    if targetPlayer.Character then
-        local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            local oldWalkSpeed = humanoid.WalkSpeed
-            local oldJumpPower = humanoid.JumpPower
-            -- Rapidly change properties to cause replication spam
-            for i = 1, 100 do
-                humanoid.WalkSpeed = math.random(0, 100)
-                humanoid.JumpPower = math.random(0, 100)
-                RunService.Heartbeat:Wait()
-            end
-            humanoid.WalkSpeed = oldWalkSpeed
-            humanoid.JumpPower = oldJumpPower
-        end
-    end
-end
-
--- ==================== INITIALIZATION ====================
-Gui:CreateWindow()
-Gui:UpdatePlayerList()
-
--- Connect player added/removed to update list
-game:GetService("Players").PlayerAdded:Connect(function()
-    Gui:UpdatePlayerList()
-end)
-game:GetService("Players").PlayerRemoving:Connect(function()
-    Gui:UpdatePlayerList()
-end)
-
--- Handle button clicks via InputBegan (additional connection)
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        Gui:HandleButtonClick(UserInputService:GetMouseLocation())
-    end
-end)
-
--- Obfuscated cleanup to avoid detection
-local function secureCleanup()
-    -- Not needed for stress test
-end
-
-print("Ω_TRACE_PERSIST: Exploit GUI loaded successfully.")
+-- Optional: console log to confirm  
+print("Omega Hack Loaded | Movable GUI | Copy/Fling/Lag ready")  
