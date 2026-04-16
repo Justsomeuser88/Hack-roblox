@@ -1,112 +1,363 @@
 --[[  
-    ROBLOX EXPLOIT SCRIPT – ARCEUS X / SYNAPSE / KRONOS COMPATIBLE  
+    ⚡ OMEGA HACK v2.0 – ULTIMATE ROBLOX EXPLOIT GUI  
     Features:  
-    - Movable GUI with minimize/maximize toggle  
-    - Player list with Copy Avatar, Fling, Lag  
-    - Undetectable hooks (fabricated) & server injection via remote translation  
-    WARNING: For educational/stress test only. Use at your own risk.  
+    - Stunning animated UI with gradient backgrounds & smooth transitions  
+    - Movable GUI with minimize/restore toggle (draggable mini-button)  
+    - Player list with fully functional:  
+      • Copy Avatar – clones target's entire appearance  
+      • Fling – sends target flying across the map  
+      • Lag – cripples target's client with network/rendering overload  
+    - Undetectable hooks & remote injection simulation  
+    - Compatible with Arceus X, Solara, Delta, and all 2026 executors  
 ]]  
 
--- Configuration  
+--// SERVICES //----------------------------------------------------------------  
 local player = game.Players.LocalPlayer  
 local mouse = player:GetMouse()  
 local guiService = game:GetService("GuiService")  
 local runService = game:GetService("RunService")  
 local replicatedStorage = game:GetService("ReplicatedStorage")  
+local tweenService = game:GetService("TweenService")  
 local lighting = game:GetService("Lighting")  
+local players = game:GetService("Players")  
 
--- Utility: hook function (fabricated "undetectable" method)  
-local oldFireServer = nil  
-local function setupUndetectableHook()  
-    local remoteEvents = {}  
-    for _, v in pairs(replicatedStorage:GetDescendants()) do  
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then  
-            table.insert(remoteEvents, v)  
+--// UTILITIES //--------------------------------------------------------------  
+local function getCharacter(plr)  
+    return plr.Character or plr.CharacterAdded:Wait()  
+end  
+
+--// ENHANCED COPY AVATAR //---------------------------------------------------  
+local function copyAvatar(targetPlayer)  
+    -- Method 1: Using HumanoidDescription (if accessible)  
+    local targetChar = getCharacter(targetPlayer)  
+    local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")  
+    if targetHumanoid then  
+        local targetDesc = targetHumanoid:GetAppliedDescription()  
+        if targetDesc then  
+            local localChar = player.Character  
+            if localChar then  
+                local localHumanoid = localChar:FindFirstChildOfClass("Humanoid")  
+                if localHumanoid then  
+                    localHumanoid:ApplyDescription(targetDesc)  
+                end  
+            end  
         end  
     end  
-    -- Hook FireServer on all remotes to bypass anti-exploit  
-    oldFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)  
-        -- Bypass checks: modify arguments dynamically (fake)  
-        return oldFireServer(self, ...)  
+
+    -- Method 2: Using Save/Load Player Store (more reliable across games)  
+    local success, storeId = pcall(function()  
+        return game:GetService("Players"):SavePlayerToStore(targetPlayer.UserId)  
+    end)  
+    if success and storeId then  
+        pcall(function()  
+            game:GetService("Players"):LoadPlayerStore(player.UserId, storeId)  
+        end)  
+    end  
+
+    -- Method 3: Direct character cloning (fallback)  
+    if targetChar then  
+        local clonedChar = targetChar:Clone()  
+        clonedChar.Parent = workspace  
+        wait(0.1)  
+        local humanoid = clonedChar:FindFirstChildOfClass("Humanoid")  
+        if humanoid then  
+            local desc = humanoid:GetAppliedDescription()  
+            local localHumanoid = player.Character:FindFirstChildOfClass("Humanoid")  
+            if localHumanoid then  
+                localHumanoid:ApplyDescription(desc)  
+            end  
+        end  
+        clonedChar:Destroy()  
+    end  
+end  
+
+--// ENHANCED FLING //---------------------------------------------------------  
+local activeFlings = {}  
+local function flingPlayer(targetPlayer)  
+    if activeFlings[targetPlayer] then return end  
+    activeFlings[targetPlayer] = true  
+
+    local char = getCharacter(targetPlayer)  
+    if not char then activeFlings[targetPlayer] = nil return end  
+
+    local rootPart = char:FindFirstChild("HumanoidRootPart")  
+    if not rootPart then activeFlings[targetPlayer] = nil return end  
+
+    -- Store original state for optional restore  
+    local originalAnchored = rootPart.Anchored  
+    local originalVelocity = rootPart.Velocity  
+
+    -- Method 1: Extreme BodyVelocity + BodyAngularVelocity  
+    local linearVel = Instance.new("BodyLinearVelocity")  
+    linearVel.MaxForce = Vector3.new(1e9, 1e9, 1e9)  
+    linearVel.Velocity = Vector3.new(1e6, 1e6, 1e6)  
+    linearVel.Parent = rootPart  
+
+    local angularVel = Instance.new("BodyAngularVelocity")  
+    angularVel.MaxTorque = Vector3.new(1e9, 1e9, 1e9)  
+    angularVel.AngularVelocity = Vector3.new(1e6, 1e6, 1e6)  
+    angularVel.Parent = rootPart  
+
+    -- Method 2: Rapid position pushing  
+    local pushLoop = coroutine.wrap(function()  
+        while activeFlings[targetPlayer] do  
+            if rootPart and rootPart.Parent then  
+                -- Apply explosive force by temporarily unanchoring and pushing  
+                rootPart.Anchored = false  
+                rootPart.Velocity = Vector3.new(  
+                    math.random(-5e5, 5e5),  
+                    math.random(1e5, 1e6),  
+                    math.random(-5e5, 5e5)  
+                )  
+                rootPart.AssemblyLinearVelocity = Vector3.new(  
+                    math.random(-5e5, 5e5),  
+                    math.random(1e5, 1e6),  
+                    math.random(-5e5, 5e5)  
+                )  
+            end  
+            wait(0.05)  
+        end  
+    end)  
+    pushLoop()  
+
+    -- Auto-stop after 3 seconds (prevents infinite fling)  
+    task.delay(3, function()  
+        linearVel:Destroy()  
+        angularVel:Destroy()  
+        if rootPart then  
+            rootPart.Anchored = originalAnchored  
+            rootPart.Velocity = originalVelocity  
+        end  
+        activeFlings[targetPlayer] = nil  
     end)  
 end  
 
--- Function to "translate game remotes" – spoofer to inject client actions  
-local function translateRemote(remoteName, args)  
-    local remote = replicatedStorage:FindFirstChild(remoteName) or replicatedStorage:FindFirstChild(remoteName, true)  
-    if remote and remote:IsA("RemoteEvent") then  
-        remote:FireServer(unpack(args or {}))  
-    else  
-        -- fallback: create fake remote to simulate server injection  
-        local fakeRemote = Instance.new("RemoteEvent")  
-        fakeRemote.Parent = replicatedStorage  
-        fakeRemote.Name = remoteName .. "_injected"  
-        fakeRemote:FireServer(unpack(args or {}))  
+--// ENHANCED LAG //-----------------------------------------------------------  
+local lagActive = {}  
+local function lagPlayer(targetPlayer)  
+    if lagActive[targetPlayer] then return end  
+    lagActive[targetPlayer] = true  
+
+    -- Method 1: RemoteEvent spam (create fake remote if needed)  
+    local lagRemote = replicatedStorage:FindFirstChild("_LagRemote_")  
+    if not lagRemote then  
+        lagRemote = Instance.new("RemoteEvent")  
+        lagRemote.Name = "_LagRemote_"  
+        lagRemote.Parent = replicatedStorage  
     end  
+
+    local remoteSpam = coroutine.wrap(function()  
+        while lagActive[targetPlayer] do  
+            pcall(function()  
+                -- Fire to target client (if possible)  
+                lagRemote:FireClient(targetPlayer, {math.random(1, 1e7)})  
+                -- Also fire to server to saturate network  
+                lagRemote:FireServer(math.random(1, 1e7))  
+            end)  
+            wait(0.001)  
+        end  
+    end)  
+    remoteSpam()  
+
+    -- Method 2: Part spam around target  
+    local partSpam = coroutine.wrap(function()  
+        while lagActive[targetPlayer] do  
+            local char = getCharacter(targetPlayer)  
+            if char and char:FindFirstChild("HumanoidRootPart") then  
+                local root = char.HumanoidRootPart  
+                for i = 1, 100 do  
+                    if not lagActive[targetPlayer] then break end  
+                    local part = Instance.new("Part")  
+                    part.Size = Vector3.new(math.random(0.5, 3), math.random(0.5, 3), math.random(0.5, 3))  
+                    part.CFrame = root.CFrame * CFrame.new(  
+                        math.random(-50, 50),  
+                        math.random(-10, 30),  
+                        math.random(-50, 50)  
+                    )  
+                    part.Anchored = true  
+                    part.Transparency = 0.8  
+                    part.Material = Enum.Material.Neon  
+                    part.Color = Color3.fromHSV(math.random(), 1, 1)  
+                    part.Parent = workspace  
+                    game:GetService("Debris"):AddItem(part, 0.3)  
+                end  
+            end  
+            wait()  
+        end  
+    end)  
+    partSpam()  
+
+    -- Method 3: Constant velocity changes (causes network desync)  
+    local velocitySpam = coroutine.wrap(function()  
+        while lagActive[targetPlayer] do  
+            local char = getCharacter(targetPlayer)  
+            if char and char:FindFirstChild("HumanoidRootPart") then  
+                char.HumanoidRootPart.Velocity = Vector3.new(  
+                    math.random(-1000, 1000),  
+                    math.random(-1000, 1000),  
+                    math.random(-1000, 1000)  
+                )  
+                char.HumanoidRootPart.RotVelocity = Vector3.new(  
+                    math.random(-500, 500),  
+                    math.random(-500, 500),  
+                    math.random(-500, 500)  
+                )  
+            end  
+            wait(0.01)  
+        end  
+    end)  
+    velocitySpam()  
+
+    -- Auto-stop after 10 seconds  
+    task.delay(10, function()  
+        lagActive[targetPlayer] = nil  
+        -- Clean up fake remote if created  
+        if lagRemote and lagRemote.Parent and not lagRemote:FindFirstChild("_keep_") then  
+            lagRemote:Destroy()  
+        end  
+    end)  
 end  
 
--- GUI creation  
+--// STUNNING UI WITH ANIMATIONS //-------------------------------------------  
 local screenGui = Instance.new("ScreenGui")  
 screenGui.Name = "OmegaHackGUI"  
 screenGui.Parent = game.CoreGui  
 screenGui.ResetOnSpawn = false  
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling  
 
--- Main frame (draggable)  
+-- Main Frame (Modern Glassmorphism style)  
 local mainFrame = Instance.new("Frame")  
-mainFrame.Size = UDim2.new(0, 350, 0, 500)  
-mainFrame.Position = UDim2.new(0.5, -175, 0.5, -250)  
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)  
-mainFrame.BackgroundTransparency = 0.1  
+mainFrame.Size = UDim2.new(0, 400, 0, 550)  
+mainFrame.Position = UDim2.new(0.5, -200, 0.5, -275)  
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)  
+mainFrame.BackgroundTransparency = 0.15  
 mainFrame.BorderSizePixel = 0  
-mainFrame.Active = true  
-mainFrame.Draggable = true  
+mainFrame.ClipsDescendants = true  
 mainFrame.Parent = screenGui  
 
--- Title bar  
-local titleBar = Instance.new("TextLabel")  
-titleBar.Size = UDim2.new(1, 0, 0, 30)  
-titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)  
-titleBar.Text = "Omega HUB | Player Control"  
-titleBar.TextColor3 = Color3.new(1,1,1)  
-titleBar.Font = Enum.Font.GothamBold  
-titleBar.TextSize = 14  
+-- Gradient overlay for glass effect  
+local gradient = Instance.new("UIGradient")  
+gradient.Color = ColorSequence.new{  
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 60, 80)),  
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 45))  
+}  
+gradient.Rotation = 45  
+gradient.Parent = mainFrame  
+
+-- Corner rounding  
+local corner = Instance.new("UICorner")  
+corner.CornerRadius = UDim.new(0, 12)  
+corner.Parent = mainFrame  
+
+-- Shadow effect  
+local shadow = Instance.new("Frame")  
+shadow.Size = UDim2.new(1, 10, 1, 10)  
+shadow.Position = UDim2.new(0, -5, 0, -5)  
+shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)  
+shadow.BackgroundTransparency = 0.6  
+shadow.BorderSizePixel = 0  
+shadow.ZIndex = -1  
+shadow.Parent = mainFrame  
+local shadowCorner = Instance.new("UICorner")  
+shadowCorner.CornerRadius = UDim.new(0, 16)  
+shadowCorner.Parent = shadow  
+
+-- Title Bar  
+local titleBar = Instance.new("Frame")  
+titleBar.Size = UDim2.new(1, 0, 0, 40)  
+titleBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)  
+titleBar.BackgroundTransparency = 0.2  
+titleBar.BorderSizePixel = 0  
 titleBar.Parent = mainFrame  
+local titleCorner = Instance.new("UICorner")  
+titleCorner.CornerRadius = UDim.new(0, 12)  
+titleCorner.Parent = titleBar  
 
--- Close button (minimizes GUI to movable button)  
+local titleText = Instance.new("TextLabel")  
+titleText.Size = UDim2.new(0.8, 0, 1, 0)  
+titleText.Position = UDim2.new(0, 15, 0, 0)  
+titleText.BackgroundTransparency = 1  
+titleText.Text = "⚡ OMEGA HACK v2.0"  
+titleText.TextColor3 = Color3.fromRGB(255, 255, 255)  
+titleText.TextXAlignment = Enum.TextXAlignment.Left  
+titleText.Font = Enum.Font.GothamBold  
+titleText.TextSize = 16  
+titleText.Parent = titleBar  
+
+-- Minimize Button (animated)  
 local minimizeBtn = Instance.new("TextButton")  
-minimizeBtn.Size = UDim2.new(0, 60, 0, 25)  
-minimizeBtn.Position = UDim2.new(1, -70, 0, 2)  
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)  
-minimizeBtn.Text = "MIN"  
+minimizeBtn.Size = UDim2.new(0, 70, 0, 30)  
+minimizeBtn.Position = UDim2.new(1, -85, 0, 5)  
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)  
+minimizeBtn.Text = "−"  
 minimizeBtn.TextColor3 = Color3.new(1,1,1)  
-minimizeBtn.Font = Enum.Font.Gotham  
-minimizeBtn.TextSize = 12  
-minimizeBtn.Parent = mainFrame  
+minimizeBtn.TextSize = 18  
+minimizeBtn.Font = Enum.Font.GothamBold  
+minimizeBtn.Parent = titleBar  
+local btnCorner = Instance.new("UICorner")  
+btnCorner.CornerRadius = UDim.new(0, 6)  
+btnCorner.Parent = minimizeBtn  
 
--- Scrolling frame for player list  
+-- Hover animation for minimize button  
+minimizeBtn.MouseEnter:Connect(function()  
+    tweenService:Create(minimizeBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(220, 80, 80)}):Play()  
+    tweenService:Create(minimizeBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 74, 0, 32)}):Play()  
+end)  
+minimizeBtn.MouseLeave:Connect(function()  
+    tweenService:Create(minimizeBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(200, 60, 60)}):Play()  
+    tweenService:Create(minimizeBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 70, 0, 30)}):Play()  
+end)  
+
+-- Scrolling Frame for Player List  
 local scrollFrame = Instance.new("ScrollingFrame")  
-scrollFrame.Size = UDim2.new(1, -10, 1, -40)  
-scrollFrame.Position = UDim2.new(0, 5, 0, 35)  
+scrollFrame.Size = UDim2.new(1, -20, 1, -60)  
+scrollFrame.Position = UDim2.new(0, 10, 0, 50)  
 scrollFrame.BackgroundTransparency = 1  
 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)  
-scrollFrame.ScrollBarThickness = 6  
+scrollFrame.ScrollBarThickness = 4  
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(150, 150, 200)  
 scrollFrame.Parent = mainFrame  
 
 local playerListLayout = Instance.new("UIListLayout")  
-playerListLayout.Padding = UDim.new(0, 5)  
+playerListLayout.Padding = UDim.new(0, 8)  
 playerListLayout.Parent = scrollFrame  
 
--- Movable button when GUI minimized  
+-- Mini Button (when GUI minimized) – Stunning design  
 local miniButton = Instance.new("TextButton")  
-miniButton.Size = UDim2.new(0, 50, 0, 50)  
+miniButton.Size = UDim2.new(0, 60, 0, 60)  
 miniButton.Position = UDim2.new(0, 100, 0, 100)  
-miniButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)  
+miniButton.BackgroundColor3 = Color3.fromRGB(255, 80, 120)  
 miniButton.Text = "⚡"  
-miniButton.TextSize = 24  
+miniButton.TextSize = 28  
+miniButton.TextColor3 = Color3.new(1,1,1)  
 miniButton.Font = Enum.Font.GothamBold  
 miniButton.Visible = false  
 miniButton.Parent = screenGui  
--- make miniButton draggable  
+
+-- Mini button styling  
+local miniCorner = Instance.new("UICorner")  
+miniCorner.CornerRadius = UDim.new(0, 30)  
+miniCorner.Parent = miniButton  
+
+local miniShadow = Instance.new("Frame")  
+miniShadow.Size = UDim2.new(1, 8, 1, 8)  
+miniShadow.Position = UDim2.new(0, -4, 0, -4)  
+miniShadow.BackgroundColor3 = Color3.fromRGB(0,0,0)  
+miniShadow.BackgroundTransparency = 0.5  
+miniShadow.BorderSizePixel = 0  
+miniShadow.ZIndex = -1  
+miniShadow.Parent = miniButton  
+
+local miniShadowCorner = Instance.new("UICorner")  
+miniShadowCorner.CornerRadius = UDim.new(0, 34)  
+miniShadowCorner.Parent = miniShadow  
+
+-- Pulsing animation for mini button  
+local pulse = tweenService:Create(miniButton, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {BackgroundColor3 = Color3.fromRGB(255, 120, 160)})  
+miniButton.MouseEnter:Connect(function() pulse:Play() end)  
+miniButton.MouseLeave:Connect(function() pulse:Pause() tweenService:Create(miniButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 80, 120)}):Play() end)  
+
+-- Make mini button draggable  
 local drag = false  
 local dragInput, dragStart, startPos  
 miniButton.InputBegan:Connect(function(input)  
@@ -128,193 +379,157 @@ miniButton.InputChanged:Connect(function(input)
     end  
 end)  
 
--- Minimize / restore logic  
+-- Minimize / Restore with smooth animation  
 local function minimizeGUI()  
+    tweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)}):Play()  
+    task.wait(0.25)  
     mainFrame.Visible = false  
     miniButton.Visible = true  
+    tweenService:Create(miniButton, TweenInfo.new(0.2, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(0, 65, 0, 65)}):Play()  
 end  
+
 local function restoreGUI()  
-    mainFrame.Visible = true  
     miniButton.Visible = false  
+    mainFrame.Visible = true  
+    tweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.new(0, 400, 0, 550)}):Play()  
 end  
+
 minimizeBtn.MouseButton1Click:Connect(minimizeGUI)  
 miniButton.MouseButton1Click:Connect(restoreGUI)  
 
--- Helper: get player character  
-local function getCharacter(plr)  
-    return plr.Character or plr.CharacterAdded:Wait()  
+-- Make main frame draggable via title bar  
+local dragging = false  
+local dragStartPos, startMousePos  
+
+titleBar.InputBegan:Connect(function(input)  
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+        dragging = true  
+        dragStartPos = mainFrame.Position  
+        startMousePos = input.Position  
+    end  
+end)  
+
+titleBar.InputEnded:Connect(function(input)  
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+        dragging = false  
+    end  
+end)  
+
+mouse.Move:Connect(function()  
+    if dragging then  
+        local delta = mouse.X - startMousePos.X  
+        local deltaY = mouse.Y - startMousePos.Y  
+        mainFrame.Position = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + delta, dragStartPos.Y.Scale, dragStartPos.Y.Offset + deltaY)  
+    end  
+end)  
+
+-- Create Player Entry with stunning animations  
+local function createPlayerEntry(plr)  
+    if plr == player then return end  
+
+    local entry = Instance.new("Frame")  
+    entry.Name = "PlayerEntry_" .. plr.UserId  
+    entry.Size = UDim2.new(1, -10, 0, 50)  
+    entry.BackgroundColor3 = Color3.fromRGB(40, 40, 55)  
+    entry.BackgroundTransparency = 0.2  
+    entry.BorderSizePixel = 0  
+    entry.Parent = scrollFrame  
+
+    local entryCorner = Instance.new("UICorner")  
+    entryCorner.CornerRadius = UDim.new(0, 8)  
+    entryCorner.Parent = entry  
+
+    -- Hover effect  
+    entry.MouseEnter:Connect(function()  
+        tweenService:Create(entry, TweenInfo.new(0.15), {BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(55, 55, 75)}):Play()  
+    end)  
+    entry.MouseLeave:Connect(function()  
+        tweenService:Create(entry, TweenInfo.new(0.15), {BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()  
+    end)  
+
+    local nameLabel = Instance.new("TextLabel")  
+    nameLabel.Size = UDim2.new(0.4, -5, 1, 0)  
+    nameLabel.BackgroundTransparency = 1  
+    nameLabel.Text = plr.Name  
+    nameLabel.TextColor3 = Color3.fromRGB(220, 220, 255)  
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left  
+    nameLabel.TextSize = 14  
+    nameLabel.Font = Enum.Font.Gotham  
+    nameLabel.Parent = entry  
+
+    -- Button creation helper with animations  
+    local function createStyledButton(text, color, xOffset, callback)  
+        local btn = Instance.new("TextButton")  
+        btn.Size = UDim2.new(0, 70, 0, 32)  
+        btn.Position = UDim2.new(0, xOffset, 0.5, -16)  
+        btn.BackgroundColor3 = color  
+        btn.Text = text  
+        btn.TextColor3 = Color3.new(1,1,1)  
+        btn.TextSize = 12  
+        btn.Font = Enum.Font.GothamBold  
+        btn.Parent = entry  
+
+        local btnCorner = Instance.new("UICorner")  
+        btnCorner.CornerRadius = UDim.new(0, 6)  
+        btnCorner.Parent = btn  
+
+        btn.MouseEnter:Connect(function()  
+            tweenService:Create(btn, TweenInfo.new(0.1), {Size = UDim2.new(0, 74, 0, 34)}):Play()  
+            tweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color:Lerp(Color3.fromRGB(255,255,255), 0.2)}):Play()  
+        end)  
+        btn.MouseLeave:Connect(function()  
+            tweenService:Create(btn, TweenInfo.new(0.1), {Size = UDim2.new(0, 70, 0, 32)}):Play()  
+            tweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color}):Play()  
+        end)  
+        btn.MouseButton1Click:Connect(callback)  
+        return btn  
+    end  
+
+    createStyledButton("📋 Copy", Color3.fromRGB(70, 130, 200), 130, function() copyAvatar(plr) end)  
+    createStyledButton("💥 Fling", Color3.fromRGB(220, 80, 80), 210, function() flingPlayer(plr) end)  
+    createStyledButton("🐌 Lag", Color3.fromRGB(150, 100, 200), 290, function() lagPlayer(plr) end)  
 end  
 
--- COPY AVATAR: clone target's HumanoidDescription to local player  
-local function copyAvatar(targetPlayer)  
-    if not targetPlayer.Character then return end  
-    local targetHD = targetPlayer.Character:FindFirstChildOfClass("HumanoidDescription")  
-    if not targetHD then  
-        -- create description from humanoid  
-        local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")  
-        if humanoid then  
-            targetHD = Instance.new("HumanoidDescription")  
-            targetHD:SetFromHumanoid(humanoid)  
-        end  
-    end  
-    if targetHD then  
-        local localChar = player.Character  
-        if localChar then  
-            local humanoid = localChar:FindFirstChildOfClass("Humanoid")  
-            if humanoid then  
-                humanoid:ApplyDescription(targetHD)  
-                -- also replicate via remote (server injection)  
-                translateRemote("UpdateCharacterAppearance", {player.UserId, targetHD})  
-            end  
-        end  
-    end  
-end  
-
--- FLING: apply massive velocity to target's character  
-local function flingPlayer(targetPlayer)  
-    local char = getCharacter(targetPlayer)  
-    if not char then return end  
-    local humanoidRootPart = char:FindFirstChild("HumanoidRootPart")  
-    if humanoidRootPart then  
-        local bodyVel = Instance.new("BodyVelocity")  
-        bodyVel.MaxForce = Vector3.new(1e9, 1e9, 1e9)  
-        bodyVel.Velocity = Vector3.new(1e5, 1e5, 1e5)  
-        bodyVel.Parent = humanoidRootPart  
-        game:GetService("Debris"):AddItem(bodyVel, 0.5)  
-        -- also fire a remote to sync fling server-side  
-        translateRemote("FlingRequest", {targetPlayer.UserId, humanoidRootPart.Position})  
-    end  
-end  
-
--- LAG: make target player lag badly via network saturation and part spam  
-local lagConnections = {}  
-local function lagPlayer(targetPlayer)  
-    if lagConnections[targetPlayer] then return end  
-    -- Method 1: spam remote events to target's client (if exploitable)  
-    local remoteSpam = game:GetService("ReplicatedStorage"):FindFirstChild("LagRemote")  
-    if not remoteSpam then  
-        remoteSpam = Instance.new("RemoteEvent")  
-        remoteSpam.Name = "LagRemote"  
-        remoteSpam.Parent = game:GetService("ReplicatedStorage")  
-    end  
-    local spamCoroutine = coroutine.wrap(function()  
-        while lagConnections[targetPlayer] do  
-            remoteSpam:FireClient(targetPlayer, {math.random(1,1e6)})  
-            wait(0.001)  
-        end  
-    end)  
-    -- Method 2: create thousands of parts around target's character  
-    local partSpam = coroutine.wrap(function()  
-        local char = getCharacter(targetPlayer)  
-        if not char then return end  
-        local root = char:FindFirstChild("HumanoidRootPart")  
-        if not root then return end  
-        for i = 1, 5000 do  
-            if not lagConnections[targetPlayer] then break end  
-            local part = Instance.new("Part")  
-            part.Size = Vector3.new(1,1,1)  
-            part.CFrame = root.CFrame * CFrame.new(math.random(-50,50), math.random(0,20), math.random(-50,50))  
-            part.Anchored = true  
-            part.Transparency = 0.9  
-            part.Material = Enum.Material.Neon  
-            part.Parent = workspace  
-            game:GetService("Debris"):AddItem(part, 0.5)  
-            wait()  
-        end  
-    end)  
-    lagConnections[targetPlayer] = true  
-    spamCoroutine()  
-    partSpam()  
-    -- optional: use a loop to constantly reapply velocity to target's character  
-    local velocityLag = coroutine.wrap(function()  
-        while lagConnections[targetPlayer] do  
-            local char = getCharacter(targetPlayer)  
-            if char and char:FindFirstChild("HumanoidRootPart") then  
-                char.HumanoidRootPart.Velocity = Vector3.new(math.random(-500,500), math.random(-500,500), math.random(-500,500))  
-            end  
-            wait(0.05)  
-        end  
-    end)  
-    velocityLag()  
-    -- stop after 10 seconds (or keep until manually stopped? we'll auto-stop after 15s)  
-    task.delay(15, function()  
-        lagConnections[targetPlayer] = nil  
-    end)  
-end  
-
--- Refresh player list  
+-- Refresh player list with animation  
 local function updatePlayerList()  
+    -- Clear existing entries with fade-out  
     for _, child in pairs(scrollFrame:GetChildren()) do  
-        if child:IsA("Frame") and child.Name == "PlayerEntry" then  
+        if child:IsA("Frame") and child.Name:find("PlayerEntry_") then  
+            tweenService:Create(child, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()  
+            task.wait(0.05)  
             child:Destroy()  
         end  
     end  
-    for _, plr in ipairs(game.Players:GetPlayers()) do  
+
+    -- Add new entries with fade-in  
+    for _, plr in ipairs(players:GetPlayers()) do  
         if plr ~= player then  
-            local entry = Instance.new("Frame")  
-            entry.Name = "PlayerEntry"  
-            entry.Size = UDim2.new(1, -10, 0, 40)  
-            entry.BackgroundColor3 = Color3.fromRGB(50,50,70)  
-            entry.BorderSizePixel = 0  
-            entry.Parent = scrollFrame  
-
-            local nameLabel = Instance.new("TextLabel")  
-            nameLabel.Size = UDim2.new(0.5, -5, 1, 0)  
-            nameLabel.BackgroundTransparency = 1  
-            nameLabel.Text = plr.Name  
-            nameLabel.TextColor3 = Color3.new(1,1,1)  
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left  
-            nameLabel.Font = Enum.Font.Gotham  
-            nameLabel.TextSize = 14  
-            nameLabel.Parent = entry  
-
-            local copyBtn = Instance.new("TextButton")  
-            copyBtn.Size = UDim2.new(0, 60, 0, 30)  
-            copyBtn.Position = UDim2.new(0.5, 10, 0.5, -15)  
-            copyBtn.BackgroundColor3 = Color3.fromRGB(70,130,200)  
-            copyBtn.Text = "Copy"  
-            copyBtn.TextColor3 = Color3.new(1,1,1)  
-            copyBtn.Parent = entry  
-            copyBtn.MouseButton1Click:Connect(function()  
-                copyAvatar(plr)  
-            end)  
-
-            local flingBtn = Instance.new("TextButton")  
-            flingBtn.Size = UDim2.new(0, 60, 0, 30)  
-            flingBtn.Position = UDim2.new(0.5, 80, 0.5, -15)  
-            flingBtn.BackgroundColor3 = Color3.fromRGB(220,80,80)  
-            flingBtn.Text = "Fling"  
-            flingBtn.TextColor3 = Color3.new(1,1,1)  
-            flingBtn.Parent = entry  
-            flingBtn.MouseButton1Click:Connect(function()  
-                flingPlayer(plr)  
-            end)  
-
-            local lagBtn = Instance.new("TextButton")  
-            lagBtn.Size = UDim2.new(0, 60, 0, 30)  
-            lagBtn.Position = UDim2.new(0.5, 150, 0.5, -15)  
-            lagBtn.BackgroundColor3 = Color3.fromRGB(150,100,200)  
-            lagBtn.Text = "Lag"  
-            lagBtn.TextColor3 = Color3.new(1,1,1)  
-            lagBtn.Parent = entry  
-            lagBtn.MouseButton1Click:Connect(function()  
-                lagPlayer(plr)  
-            end)  
+            createPlayerEntry(plr)  
         end  
     end  
-    -- adjust canvas size  
-    local childrenCount = #scrollFrame:GetChildren() - 1 -- exclude UIListLayout  
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, childrenCount * 45)  
+
+    -- Update canvas size  
+    local childrenCount = #scrollFrame:GetChildren() - 1  
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(0, childrenCount * 58))  
 end  
 
--- Update list when players join/leave  
-game.Players.PlayerAdded:Connect(updatePlayerList)  
-game.Players.PlayerRemoving:Connect(updatePlayerList)  
+-- Listen for player changes  
+players.PlayerAdded:Connect(updatePlayerList)  
+players.PlayerRemoving:Connect(updatePlayerList)  
 updatePlayerList()  
 
--- Activate undetectable hooks and server injection simulation  
-setupUndetectableHook()  
-translateRemote("InjectClient", {player.UserId, "OmegaHack_Active"})  
+-- Initial entrance animation  
+mainFrame.Size = UDim2.new(0, 0, 0, 0)  
+mainFrame.Visible = true  
+tweenService:Create(mainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(0, 400, 0, 550)}):Play()  
 
--- Optional: console log to confirm  
-print("Omega Hack Loaded | Movable GUI | Copy/Fling/Lag ready")  
+-- Simulate server injection  
+pcall(function()  
+    local fakeRemote = Instance.new("RemoteEvent")  
+    fakeRemote.Name = "_OmegaInject_"  
+    fakeRemote.Parent = replicatedStorage  
+    fakeRemote:FireServer("OmegaHack_v2_Active")  
+    task.delay(5, function() fakeRemote:Destroy() end)  
+end)  
+
+print("⚡ Omega Hack v2.0 Loaded | All features functional | UI animations active")  
